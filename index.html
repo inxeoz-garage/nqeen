@@ -1,0 +1,278 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>N-Queens Engineering Lab 2026 - Feature Complete</title>
+    <style>
+        :root { --primary: #2563eb; --danger: #ef4444; --success: #10b981; --warning: #f59e0b; --bg: #0f172a; --card: #1e293b; --text: #f1f5f9; }
+        body { font-family: 'Inter', system-ui, sans-serif; background: var(--bg); color: var(--text); display: flex; flex-direction: column; align-items: center; padding: 20px; margin: 0; }
+        
+        .container { display: grid; grid-template-columns: auto 400px; gap: 20px; max-width: 1200px; width: 100%; }
+        @media (max-width: 950px) { .container { grid-template-columns: 1fr; } }
+
+        /* Board Fix */
+        .board-wrapper { display: flex; justify-content: center; padding: 10px; background: #020617; border-radius: 8px; overflow: auto; }
+        .board { 
+            display: inline-grid; /* This makes the border perfectly wrap the cells */
+            border: 4px solid #475569; 
+            box-shadow: 0 0 20px rgba(0,0,0,0.5);
+            background: #475569; /* Acts as grid gap color */
+            gap: 1px; 
+        }
+        .cell { width: 40px; height: 40px; display: flex; align-items: center; justify-content: center; font-size: 24px; transition: 0.1s; }
+        .w { background: #334155; } 
+        .b { background: #1e293b; }
+        .highlight { background: var(--warning) !important; color: #000; box-shadow: inset 0 0 10px rgba(0,0,0,0.5); }
+        .queen { color: var(--danger); font-weight: bold; }
+
+        /* Dashboard & UI */
+        .glass-card { background: var(--card); padding: 20px; border-radius: 16px; border: 1px solid #334155; height: fit-content; }
+        .stat-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 15px; }
+        .stat-box { background: #0f172a; padding: 10px; border-radius: 8px; text-align: center; border: 1px solid #334155; }
+        .stat-label { font-size: 0.7rem; color: #94a3b8; text-transform: uppercase; margin-bottom: 5px; }
+        
+        .mode-btn { background: #0f172a; border: 2px solid var(--primary); color: var(--primary); padding: 8px; border-radius: 8px; cursor: pointer; margin-bottom: 15px; }
+        .mode-active { background: var(--primary); color: var(--text); }
+
+        .tracker-row { border-left: 3px solid var(--primary); padding-left: 10px; margin-bottom: 12px; }
+        .slots { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 5px; }
+        .slot { width: 22px; height: 22px; border: 1px solid #475569; display: flex; align-items: center; justify-content: center; font-size: 0.6rem; border-radius: 4px; cursor: pointer; transition: 0.2s; }
+        .slot.active { background: var(--danger); border-color: var(--danger); color: white; }
+        .slot:hover { border-color: var(--primary); background: #334155; }
+
+        .controls { display: flex; flex-wrap: wrap; gap: 8px; margin: 15px 0 0 0; }
+        button { flex: 1; padding: 10px; border-radius: 8px; border: none; cursor: pointer; font-weight: 600; transition: 0.2s; background: var(--primary); color: white; }
+        button.danger { background: #b91c1c; }
+        button:disabled { background: #475569; cursor: not-allowed; }
+        
+        .log { height: 160px; overflow-y: auto; background: #020617; border-radius: 8px; padding: 12px; font-family: monospace; font-size: 0.8rem; color: #10b981; border: 1px solid #334155; }
+        .log div { margin-bottom: 3px; }
+
+        #toast-container { position: fixed; bottom: 20px; left: 20px; z-index: 100; display: flex; flex-direction: column-reverse; }
+        .toast { background: var(--card); border-left: 4px solid var(--primary); padding: 12px 20px; margin-top: 10px; border-radius: 4px; box-shadow: 0 4px 12px rgba(0,0,0,0.5); animation: slideIn 0.3s ease-out; }
+        @keyframes slideIn { from { transform: translateX(-110%); } to { transform: translateX(0); } }
+    </style>
+</head>
+<body>
+
+    <h2 style="margin: 0 0 20px 0;">N-Queens 1D Hashing Lab</h2>
+
+    <div class="container">
+        <!-- Board Visualizer -->
+        <div class="glass-card">
+            <div class="board-wrapper">
+                <div class="board" id="board"></div>
+            </div>
+            
+            <div style="margin-top: 15px; font-size: 0.75rem; color: #94a3b8; line-height: 1.4;">
+                Hover over tracker slots to highlight attack paths.
+            </div>
+
+            <div class="controls">
+                <button onclick="rewind()" id="rewindBtn">« Rewind Step</button>
+                <button onclick="step()" id="stepBtn">Forward Step »</button>
+                <button onclick="reset()" class="danger" style="grid-column: span 2;">Reset Board (N=<span id="n-val"></span>)</button>
+            </div>
+        </div>
+
+        <!-- Logic Panel -->
+        <div class="panel">
+            <div class="glass-card">
+                <div class="stat-grid">
+                    <div class="stat-box">
+                        <div class="stat-label">N (4-14)</div>
+                        <input type="number" id="nInput" value="8" min="4" max="14" onchange="reset()" style="background:none; border:none; color:var(--success); font-size:1.2rem; font-weight:bold; width:50px; text-align:center;">
+                    </div>
+                    <div class="stat-box">
+                        <div class="stat-label">Current Row</div>
+                        <div id="row-stat" style="font-size:1.2rem; font-weight:bold; color:var(--primary);">0</div>
+                    </div>
+                </div>
+
+                <div class="mode-btn" id="modeBtn" onclick="toggleMode()">Mode: Auto Algorithm</div>
+
+                <div class="tracker-row">
+                    <div class="stat-label">Column Tracker <code>[c]</code></div>
+                    <div class="slots" id="track-cols"></div>
+                </div>
+                <div class="tracker-row" style="border-color: var(--warning);">
+                    <div class="stat-label">Main Diagonal <code>[r - c + N-1]</code></div>
+                    <div class="slots" id="track-diag1"></div>
+                </div>
+                <div class="tracker-row" style="border-color: var(--success);">
+                    <div class="stat-label">Anti Diagonal <code>[r + c]</code></div>
+                    <div class="slots" id="track-diag2"></div>
+                </div>
+
+                <div class="log" id="log"></div>
+            </div>
+        </div>
+    </div>
+
+    <div id="toast-container"></div>
+
+    <script>
+        let N = 8, history = [], isManual = false;
+        let state = { row: 0, col: 0, queens: [], cols: [], diag1: [], diag2: [] };
+
+        function reset() {
+            N = parseInt(document.getElementById('nInput').value);
+            state = { 
+                row: 0, col: 0,
+                queens: new Array(N).fill(-1), 
+                cols: new Array(N).fill(0), 
+                diag1: new Array(2*N-1).fill(0), 
+                diag2: new Array(2*N-1).fill(0) 
+            };
+            history = [];
+            document.getElementById('n-val').innerText = N;
+            document.getElementById('log').innerHTML = "> Initialized N=" + N + ". Use buttons or manual mode to interact.";
+            if (isManual) toggleMode(); // Ensure auto mode is default on reset
+            render();
+        }
+
+        function render() {
+            const b = document.getElementById('board');
+            b.style.gridTemplateColumns = `repeat(${N}, 40px)`;
+            b.innerHTML = '';
+            for(let r=0; r<N; r++){
+                for(let c=0; c<N; c++){
+                    const cell = document.createElement('div');
+                    cell.className = `cell ${(r+c)%2===0?'w':'b'}`;
+                    cell.id = `c-${r}-${c}`;
+                    if(state.queens[r]===c) cell.innerHTML = '<span class="queen">♛</span>';
+                    b.appendChild(cell);
+                }
+            }
+            document.getElementById('row-stat').innerText = state.row;
+            updateTrackers();
+        }
+
+        function updateTrackers() {
+            const draw = (id, arr, type) => {
+                const el = document.getElementById(id); el.innerHTML = '';
+                arr.forEach((v, i) => {
+                    const s = document.createElement('div');
+                    s.className = `slot ${v?'active':''}`;
+                    s.innerText = i;
+                    if(type==='col' && isManual) s.onclick = () => manualPlace(i);
+                    else s.onclick = null;
+                    s.onmouseover = () => highlightPath(type, i);
+                    s.onmouseout = () => document.querySelectorAll('.cell').forEach(c=>c.classList.remove('highlight'));
+                    el.appendChild(s);
+                });
+            };
+            draw('track-cols', state.cols, 'col');
+            draw('track-diag1', state.diag1, 'd1');
+            draw('track-diag2', state.diag2, 'd2');
+        }
+
+        function highlightPath(type, idx) {
+            for(let r=0; r<N; r++) {
+                for(let c=0; c<N; c++) {
+                    let match = (type==='col' && c===idx) || (type==='d1' && (r-c+N-1)===idx) || (type==='d2' && (r+c)===idx);
+                    if(match) document.getElementById(`c-${r}-${c}`).classList.add('highlight');
+                }
+            }
+        }
+
+        function toggleMode() {
+            isManual = !isManual;
+            document.getElementById('modeBtn').innerText = isManual ? "Mode: Manual Placement" : "Mode: Auto Algorithm";
+            document.getElementById('modeBtn').classList.toggle('mode-active', isManual);
+            document.getElementById('stepBtn').disabled = isManual;
+            document.getElementById('rewindBtn').disabled = isManual;
+            log(isManual ? "Manual Mode Enabled. Click green columns to place." : "Auto Mode Enabled.");
+            render(); // Rerender trackers for manual click handlers
+        }
+
+        function manualPlace(c) {
+            if(!isManual) return;
+            // Simplified manual logic for current row placement/removal
+            const d1 = state.row-c+N-1, d2 = state.row+c;
+            
+            // Handle removal of last queen if clicked again
+            if (state.row > 0 && state.queens[state.row-1] === c && isManual) {
+                state.row--;
+                const pc = state.queens[state.row];
+                state.cols[pc]=0; state.diag1[state.row-pc+N-1]=0; state.diag2[state.row+pc]=0; state.queens[state.row]=-1;
+                log(`Manual Remove: R${state.row} C${c}`);
+            }
+            // Handle new placement
+            else if (state.row < N && !state.cols[c] && !state.diag1[d1] && !state.diag2[d2]) {
+                state.queens[state.row] = c; state.cols[c] = 1; state.diag1[d1] = 1; state.diag2[d2] = 1;
+                log(`Manual Place: R${state.row} C${c}`);
+                state.row++;
+            } else {
+                log(`Manual Conflict at R${state.row} C${c}`);
+                toast("Conflict detected!", "error");
+            }
+            render();
+        }
+
+
+        function step() {
+            if(state.row >= N) {
+                log("Puzzle Solved!", "color:var(--success)");
+                toast("N-Queens Puzzle Solved!", "success");
+                return;
+            }
+            if(isManual) return;
+            
+            history.push(JSON.parse(JSON.stringify(state)));
+
+            let foundSafeSpot = false;
+            // We search from state.col in the current row
+            for(let c = state.col; c < N; c++) {
+                const d1 = state.row - c + N - 1, d2 = state.row + c;
+                log(`R${state.row} C${c}: Checking...`);
+
+                if(!state.cols[c] && !state.diag1[d1] && !state.diag2[d2]) {
+                    state.queens[state.row] = c;
+                    state.cols[c] = 1; state.diag1[d1] = 1; state.diag2[d2] = 1;
+                    log(`R${state.row} C${c}: Placed. Advancing row.`);
+                    state.row++;
+                    state.col = 0; // Reset column search for the next row
+                    foundSafeSpot = true;
+                    break; 
+                }
+            }
+
+            if(!foundSafeSpot) {
+                log(`R${state.row}: No safe column found. Backtracking needed.`);
+                history.pop(); 
+                rewind();
+            }
+            render();
+        }
+
+        function rewind() {
+            if(history.length === 0) {
+                log("Reached start of algorithm trace.");
+                return;
+            }
+            // Load previous state, which handles the "un-placing" of a queen
+            state = history.pop();
+            log(`Rewound to R${state.row} C${state.col}.`);
+            render();
+        }
+
+        function log(m, style="") {
+            const l = document.getElementById('log');
+            l.innerHTML = `<div style="${style}">> ${m}</div>` + l.innerHTML;
+        }
+
+        function toast(m, type) {
+            const container = document.getElementById('toast-container');
+            const t = document.createElement('div');
+            t.className = `toast`;
+            t.innerText = m;
+            container.appendChild(t);
+            setTimeout(() => t.remove(), 3000);
+        }
+        
+        reset();
+    </script>
+</body>
+</html>
